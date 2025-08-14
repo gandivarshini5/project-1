@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Automatic On/Off TV (HTML + CSS + JS)</title>
+  <style>
+    :root{
+      --bg:#0f1221; --panel:#171a2b; --accent:#4ade80; --danger:#ef4444; --muted:#8b90a6; --glass:rgba(255,255,255,.06);
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; background:radial-gradient(1200px 800px at 70% -20%,#2b2e46 0,#0b0d18 60%,#05060e 100%); color:#e9ecf5; min-height:100svh; display:grid; place-items:center; padding:24px}
+    .wrap{display:grid; gap:18px; width:min(980px,92vw)}
+    h1{margin:0 0 6px; font-weight:800; letter-spacing:.2px}
+    .subtitle{color:var(--muted); margin:0 0 12px}
+
+    /* CONTROL PANEL */
+    .panel{display:grid; grid-template-columns: 1fr; gap:14px; background:var(--panel); border:1px solid #262a44; padding:16px; border-radius:16px; box-shadow:0 10px 35px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)}
+    .row{display:flex; flex-wrap:wrap; gap:12px; align-items:center}
+    .btn{appearance:none; border:0; padding:10px 14px; border-radius:12px; font-weight:700; cursor:pointer; background:linear-gradient(180deg,#2a2f51,#1b1f39); color:#e9ecf5; border:1px solid #2b3052; box-shadow:0 6px 14px rgba(0,0,0,.35)}
+    .btn:hover{filter:brightness(1.1)}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(180deg,#2d7c53,#1e5f3e); border-color:#2a8b60}
+    .btn.danger{background:linear-gradient(180deg,#7c2d2d,#5f1e1e); border-color:#8b2a2a}
+    .btn.ghost{background:transparent}
+
+    .chip{padding:8px 12px; border-radius:999px; background:var(--glass); border:1px solid #2a2f51; color:#d4d8ea}
+    label{font-size:14px; color:#d5d9ec}
+    input[type="number"], input[type="time"]{height:40px; padding:0 12px; border-radius:10px; border:1px solid #2a2f51; background:#121528; color:#e9ecf5; outline:none}
+    input[type="checkbox"]{width:18px; height:18px}
+
+    /* TV */
+    .tv{position:relative; aspect-ratio:16/9; width:100%; background:#000; border-radius:22px; overflow:hidden; border:2px solid #22263f; box-shadow:0 30px 60px rgba(0,0,0,.6)}
+    .bezel{position:absolute; inset:0; padding:18px}
+    .screen{position:absolute; inset:18px; border-radius:12px; overflow:hidden; background:#000; display:grid; place-items:center}
+    .scanlines::after{content:""; position:absolute; inset:0; background:repeating-linear-gradient( to bottom, rgba(255,255,255,.06) 0 1px, transparent 1px 3px); mix-blend-mode:overlay; pointer-events:none}
+
+    .screen.off{background:#020204;}
+    .screen.off .content{display:none}
+
+    .content{position:relative; width:100%; height:100%; display:grid; place-items:center; animation: glow 3s ease-in-out infinite alternate}
+    @keyframes glow{from{filter:brightness(.9)} to{filter:brightness(1.15)}}
+
+    .bars{position:absolute; inset:0; background:conic-gradient(from 0deg,#ff3b30,#ffcc00,#34c759,#5ac8fa,#af52de,#ff3b30); filter:saturate(1.2) contrast(1.05); opacity:.18}
+
+    .program{position:relative; z-index:1; text-align:center}
+    .clock{font-weight:800; font-size:clamp(18px,3.5vw,40px); letter-spacing:.5px}
+    .status{font-size:clamp(12px,2.2vw,16px); color:#d0d4eb}
+
+    .led{position:absolute; bottom:12px; right:16px; width:12px; height:12px; border-radius:50%; box-shadow:0 0 10px currentColor}
+    .led.on{color:var(--accent)}
+    .led.off{color:var(--danger)}
+
+    .stand{width:180px; height:10px; background:#0f1221; border-radius:6px; margin:10px auto 0; box-shadow:0 6px 22px rgba(0,0,0,.6)}
+
+    .footnote{color:#9aa0b9; font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Automatic On/Off TV</h1>
+      <p class="subtitle">Single‑file demo. Use the power button or enable <em>Auto Toggle</em> to switch the TV on and off automatically.</p>
+    </header>
+
+    <section class="panel" aria-label="Controls">
+      <div class="row">
+        <button id="powerBtn" class="btn primary" aria-pressed="false">🔌 Power</button>
+        <span class="chip" id="powerLabel">TV is OFF</span>
+        <span class="chip" id="nextToggle">Next toggle: —</span>
+      </div>
+      <div class="row">
+        <label class="chip"><input id="autoToggle" type="checkbox" />&nbsp; Enable Auto Toggle</label>
+        <label>Every (seconds): <input id="interval" type="number" min="1" value="5" /></label>
+        <button id="startAuto" class="btn">Start</button>
+        <button id="stopAuto" class="btn ghost">Stop</button>
+      </div>
+      <div class="row">
+        <label>Schedule at time (24h): <input id="scheduleTime" type="time" value="08:00" /></label>
+        <button id="scheduleOn" class="btn">Schedule ON</button>
+        <button id="scheduleOff" class="btn danger">Schedule OFF</button>
+        <span class="chip" id="scheduleNote">No schedules</span>
+      </div>
+    </section>
+
+    <section class="tv" aria-label="TV">
+      <div class="bezel">
+        <div class="screen off scanlines" id="screen">
+          <div class="content">
+            <div class="bars"></div>
+            <div class="program">
+              <div class="clock" id="clock">--:--:--</div>
+              <div class="status" id="statusText">Channel 1 • Ambient Glow</div>
+            </div>
+          </div>
+          <span class="led off" id="led" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div class="stand"></div>
+    </section>
+
+    <p class="footnote">Tip: Start Auto Toggle and change the interval to see it switch automatically. The time‑based schedule runs once when the clock matches.</p>
+  </div>
+
+  <script>
+    const screen = document.getElementById('screen');
+    const led = document.getElementById('led');
+    const powerBtn = document.getElementById('powerBtn');
+    const powerLabel = document.getElementById('powerLabel');
+    const statusText = document.getElementById('statusText');
+    const clockEl = document.getElementById('clock');
+    const nextToggle = document.getElementById('nextToggle');
+
+    const autoToggle = document.getElementById('autoToggle');
+    const intervalInput = document.getElementById('interval');
+    const startAuto = document.getElementById('startAuto');
+    const stopAuto = document.getElementById('stopAuto');
+
+    const scheduleTime = document.getElementById('scheduleTime');
+    const scheduleOn = document.getElementById('scheduleOn');
+    const scheduleOff = document.getElementById('scheduleOff');
+    const scheduleNote = document.getElementById('scheduleNote');
+
+    let isOn = false;
+    let autoTimer = null;
+    let schedule = { on:null, off:null };
+
+    function setPower(state){
+      isOn = state;
+      screen.classList.toggle('off', !isOn);
+      led.className = 'led ' + (isOn ? 'on' : 'off');
+      powerLabel.textContent = isOn ? 'TV is ON' : 'TV is OFF';
+      powerBtn.setAttribute('aria-pressed', String(isOn));
+      statusText.textContent = isOn ? 'Channel 1 • Ambient Glow' : 'No Signal';
+      document.title = (isOn ? '🟢' : '🔴') + ' Automatic On/Off TV';
+    }
+
+    function toggle(){ setPower(!isOn); announceNextToggle(); }
+
+    function announceNextToggle(){
+      if(autoTimer){
+        const secs = Number(intervalInput.value || 0);
+        const at = new Date(Date.now() + secs*1000);
+        nextToggle.textContent = 'Next toggle: ' + at.toLocaleTimeString();
+      } else {
+        nextToggle.textContent = 'Next toggle: —';
+      }
+    }
+
+    powerBtn.addEventListener('click', () => toggle());
+
+    startAuto.addEventListener('click', () => {
+      if(!autoToggle.checked){ autoToggle.checked = true; }
+      const secs = Math.max(1, Number(intervalInput.value || 5));
+      clearInterval(autoTimer);
+      autoTimer = setInterval(toggle, secs*1000);
+      announceNextToggle();
+    });
+
+    stopAuto.addEventListener('click', () => {
+      autoToggle.checked = false;
+      clearInterval(autoTimer); autoTimer = null;
+      announceNextToggle();
+    });
+
+    // Schedule helpers
+    function scheduleOneShot(type){
+      const [hh,mm] = (scheduleTime.value || '00:00').split(':').map(Number);
+      const now = new Date();
+      const run = new Date(now);
+      run.setHours(hh, mm, 0, 0);
+      if(run <= now) run.setDate(run.getDate()+1); // next day
+
+      const delay = run - now;
+      const timer = setTimeout(() => {
+        setPower(type==='on');
+        schedule[type] = null; // clear after run
+        updateScheduleNote();
+      }, delay);
+
+      if(schedule[type]) clearTimeout(schedule[type]);
+      schedule[type] = timer;
+      updateScheduleNote();
+    }
+
+    function updateScheduleNote(){
+      const parts = [];
+      if(schedule.on) parts.push('ON scheduled at ' + scheduleTime.value);
+      if(schedule.off) parts.push('OFF scheduled at ' + scheduleTime.value);
+      scheduleNote.textContent = parts.length ? parts.join(' • ') : 'No schedules';
+    }
+
+    scheduleOn.addEventListener('click', () => scheduleOneShot('on'));
+    scheduleOff.addEventListener('click', () => scheduleOneShot('off'));
+
+    // Live clock
+    setInterval(()=>{ clockEl.textContent = new Date().toLocaleTimeString(); }, 250);
+
+    // Start with TV OFF
+    setPower(false);
+  </script>
+</body>
+</html>
